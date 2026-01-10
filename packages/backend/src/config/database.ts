@@ -1,28 +1,46 @@
 import mongoose from 'mongoose';
-import dotenv from 'dotenv';
+import config from './config';
 
-dotenv.config();
-
-const connectDB = async (): Promise<void> => {
+const connectDatabase = async (): Promise<void> => {
   try {
-    const mongoURI = process.env.MONGODB_URI || 'mongodb://localhost:27017/weather-dashboard';
-    
-    await mongoose.connect(mongoURI);
-    
-    console.log('MongoDB connected successfully');
-    
-    mongoose.connection.on('error', (err) => {
-      console.error('MongoDB connection error:', err);
+    const options: mongoose.ConnectOptions = {
+      maxPoolSize: 10,
+      serverSelectionTimeoutMS: 5000,
+      socketTimeoutMS: 45000,
+    };
+
+    await mongoose.connect(config.mongodbUri, options);
+
+    console.log('✅ MongoDB connected successfully');
+
+    // Handle connection events
+    mongoose.connection.on('error', (error) => {
+      console.error('❌ MongoDB connection error:', error);
     });
 
     mongoose.connection.on('disconnected', () => {
-      console.log('MongoDB disconnected');
+      console.warn('⚠️  MongoDB disconnected. Attempting to reconnect...');
     });
 
+    mongoose.connection.on('reconnected', () => {
+      console.log('✅ MongoDB reconnected successfully');
+    });
+
+    // Graceful shutdown
+    process.on('SIGINT', async () => {
+      try {
+        await mongoose.connection.close();
+        console.log('📦 MongoDB connection closed through app termination');
+        process.exit(0);
+      } catch (error) {
+        console.error('❌ Error closing MongoDB connection:', error);
+        process.exit(1);
+      }
+    });
   } catch (error) {
-    console.error('MongoDB connection failed:', error);
+    console.error('❌ Failed to connect to MongoDB:', error);
     process.exit(1);
   }
 };
 
-export default connectDB;
+export default connectDatabase;

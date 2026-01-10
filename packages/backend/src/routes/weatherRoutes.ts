@@ -1,19 +1,41 @@
 import { Router } from 'express';
-import {
-  getWeather,
-  getWeatherByLocation,
-  getCityForecast,
-  getLocationForecast,
-} from '../controllers/weatherController';
+import { getCurrentWeather, getForecast, searchCities } from '../controllers';
+import { validateRequest, weatherLimiter } from '../middlewares';
+import { weatherQueryValidation } from '../utils';
 
 const router = Router();
 
-// Current weather routes
-router.get('/current/:city', getWeather);
-router.get('/current', getWeatherByLocation);
+/**
+ * @route   GET /api/weather
+ * @desc    Get current weather by city or coordinates
+ * @access  Public
+ */
+router.get(
+  '/',
+  weatherLimiter,
+  weatherQueryValidation,
+  validateRequest,
+  getCurrentWeather
+);
 
-// Forecast routes
-router.get('/forecast/:city', getCityForecast);
-router.get('/forecast', getLocationForecast);
+/**
+ * @route   GET /api/weather/forecast
+ * @desc    Get 5-day forecast by city or coordinates
+ * @access  Public
+ */
+router.get(
+  '/forecast',
+  weatherLimiter,
+  weatherQueryValidation,
+  validateRequest,
+  getForecast
+);
+
+/**
+ * @route   GET /api/weather/search
+ * @desc    Search for cities (geocoding)
+ * @access  Public
+ */
+router.get('/search', weatherLimiter, searchCities);
 
 export default router;

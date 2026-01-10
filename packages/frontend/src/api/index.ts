@@ -1,4 +1,8 @@
-export { default as api } from './axios';
-export { authApi } from './auth';
-export { weatherApi } from './weather';
-export { favoritesApi } from './favorites';
+export { authApi } from './authApi';
+export { weatherApi } from './weatherApi';
+export { favoritesApi } from './favoritesApi';
+
+// Re-export hooks
+export * from './authApi';
+export * from './weatherApi';
+export * from './favoritesApi';

@@ -1,202 +1,193 @@
-import { Request, Response } from 'express';
-import User from '../models/User';
-import { AuthRequest } from '../types';
-import {
-  generateAccessToken,
-  generateRefreshToken,
-  verifyRefreshToken,
-} from '../utils/jwt';
+import { Request, Response, NextFunction } from 'express';
+import { authService } from '../services';
+import { config } from '../config';
+import { ApiResponse } from '../types/express.d';
+import { CreateUserDTO, LoginDTO, UserResponse, AuthTokens } from '../types';
+import { getTokenExpiration } from '../utils';
 
-// Register new user
-export const register = async (req: Request, res: Response): Promise<void> => {
+// Cookie options for tokens
+const getCookieOptions = (maxAge: number) => ({
+  httpOnly: true,
+  secure: config.nodeEnv === 'production',
+  sameSite: config.nodeEnv === 'production' ? ('strict' as const) : ('lax' as const),
+  maxAge,
+  path: '/',
+});
+
+/**
+ * Register a new user
+ * POST /api/auth/register
+ */
+export const register = async (
+  req: Request<object, ApiResponse<{ user: UserResponse }>, CreateUserDTO>,
+  res: Response<ApiResponse<{ user: UserResponse }>>,
+  next: NextFunction
+): Promise<void> => {
   try {
-    const { name, email, password } = req.body;
+    const { user, tokens } = await authService.register(req.body);
 
-    // Check if user already exists
-    const existingUser = await User.findOne({ email });
-    if (existingUser) {
-      res.status(400).json({
-        success: false,
-        message: 'User with this email already exists.',
-      });
-      return;
-    }
-
-    // Create new user
-    const user = await User.create({
-      name,
-      email,
-      password,
-    });
-
-    // Generate tokens
-    const tokenPayload = { id: user._id.toString(), email: user.email };
-    const accessToken = generateAccessToken(tokenPayload);
-    const refreshToken = generateRefreshToken(tokenPayload);
+    // Set cookies
+    setAuthCookies(res, tokens);
 
     res.status(201).json({
       success: true,
-      message: 'User registered successfully.',
-      data: {
-        user: {
-          id: user._id,
-          name: user.name,
-          email: user.email,
-          favorites: user.favorites,
-        },
-        accessToken,
-        refreshToken,
-      },
+      message: 'Registration successful',
+      data: { user },
     });
   } catch (error) {
-    console.error('Register error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Error registering user.',
-    });
+    next(error);
   }
 };
 
-// Login user
-export const login = async (req: Request, res: Response): Promise<void> => {
+/**
+ * Login user
+ * POST /api/auth/login
+ */
+export const login = async (
+  req: Request<object, ApiResponse<{ user: UserResponse }>, LoginDTO>,
+  res: Response<ApiResponse<{ user: UserResponse }>>,
+  next: NextFunction
+): Promise<void> => {
   try {
-    const { email, password } = req.body;
+    const { user, tokens } = await authService.login(req.body);
 
-    // Find user and include password
-    const user = await User.findOne({ email }).select('+password');
-    
-    if (!user) {
-      res.status(401).json({
-        success: false,
-        message: 'Invalid email or password.',
-      });
-      return;
-    }
-
-    // Check password
-    const isMatch = await user.comparePassword(password);
-    
-    if (!isMatch) {
-      res.status(401).json({
-        success: false,
-        message: 'Invalid email or password.',
-      });
-      return;
-    }
-
-    // Generate tokens
-    const tokenPayload = { id: user._id.toString(), email: user.email };
-    const accessToken = generateAccessToken(tokenPayload);
-    const refreshToken = generateRefreshToken(tokenPayload);
+    // Set cookies
+    setAuthCookies(res, tokens);
 
     res.status(200).json({
       success: true,
-      message: 'Login successful.',
-      data: {
-        user: {
-          id: user._id,
-          name: user.name,
-          email: user.email,
-          favorites: user.favorites,
-        },
-        accessToken,
-        refreshToken,
-      },
+      message: 'Login successful',
+      data: { user },
     });
   } catch (error) {
-    console.error('Login error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Error logging in.',
-    });
+    next(error);
   }
 };
 
-// Refresh token
-export const refreshToken = async (req: Request, res: Response): Promise<void> => {
+/**
+ * Logout user
+ * POST /api/auth/logout
+ */
+export const logout = async (
+  _req: Request,
+  res: Response<ApiResponse>,
+  _next: NextFunction
+): Promise<void> => {
+  // Clear cookies
+  res.clearCookie('accessToken', { path: '/' });
+  res.clearCookie('refreshToken', { path: '/' });
+
+  res.status(200).json({
+    success: true,
+    message: 'Logout successful',
+  });
+};
+
+/**
+ * Refresh access token
+ * POST /api/auth/refresh
+ */
+export const refreshToken = async (
+  req: Request,
+  res: Response<ApiResponse>,
+  next: NextFunction
+): Promise<void> => {
   try {
-    const { refreshToken: token } = req.body;
+    // Get refresh token from cookie or body
+    const refreshTokenValue =
+      req.cookies?.refreshToken || req.body?.refreshToken;
 
-    if (!token) {
-      res.status(400).json({
-        success: false,
-        message: 'Refresh token is required.',
-      });
-      return;
-    }
-
-    // Verify refresh token
-    const decoded = verifyRefreshToken(token);
-    
-    if (!decoded) {
+    if (!refreshTokenValue) {
       res.status(401).json({
         success: false,
-        message: 'Invalid or expired refresh token.',
+        message: 'Refresh token not provided',
       });
       return;
     }
 
-    // Find user
-    const user = await User.findById(decoded.id);
-    
-    if (!user) {
-      res.status(401).json({
-        success: false,
-        message: 'User not found.',
-      });
-      return;
-    }
+    const tokens = await authService.refreshToken(refreshTokenValue);
 
-    // Generate new tokens
-    const tokenPayload = { id: user._id.toString(), email: user.email };
-    const accessToken = generateAccessToken(tokenPayload);
-    const newRefreshToken = generateRefreshToken(tokenPayload);
+    // Set new cookies
+    setAuthCookies(res, tokens);
 
     res.status(200).json({
       success: true,
-      data: {
-        accessToken,
-        refreshToken: newRefreshToken,
-      },
+      message: 'Token refreshed successfully',
     });
   } catch (error) {
-    console.error('Refresh token error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Error refreshing token.',
-    });
+    // Clear invalid cookies
+    res.clearCookie('accessToken', { path: '/' });
+    res.clearCookie('refreshToken', { path: '/' });
+    next(error);
   }
 };
 
-// Get current user
-export const getMe = async (req: AuthRequest, res: Response): Promise<void> => {
+/**
+ * Get current user
+ * GET /api/auth/me
+ */
+export const getCurrentUser = async (
+  req: Request,
+  res: Response<ApiResponse<{ user: UserResponse }>>,
+  next: NextFunction
+): Promise<void> => {
   try {
-    const user = await User.findById(req.user?.id);
-    
-    if (!user) {
-      res.status(404).json({
+    if (!req.user) {
+      res.status(401).json({
         success: false,
-        message: 'User not found.',
+        message: 'Not authenticated',
       });
       return;
     }
 
+    const user = await authService.getUserById(req.user.id);
+
     res.status(200).json({
       success: true,
-      data: {
-        user: {
-          id: user._id,
-          name: user.name,
-          email: user.email,
-          favorites: user.favorites,
-        },
-      },
+      data: { user },
     });
   } catch (error) {
-    console.error('Get me error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Error fetching user.',
-    });
+    next(error);
   }
+};
+
+/**
+ * Update user preferences
+ * PATCH /api/auth/preferences
+ */
+export const updatePreferences = async (
+  req: Request,
+  res: Response<ApiResponse<{ user: UserResponse }>>,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    if (!req.user) {
+      res.status(401).json({
+        success: false,
+        message: 'Not authenticated',
+      });
+      return;
+    }
+
+    const user = await authService.updatePreferences(req.user.id, req.body);
+
+    res.status(200).json({
+      success: true,
+      message: 'Preferences updated successfully',
+      data: { user },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * Helper function to set auth cookies
+ */
+const setAuthCookies = (res: Response, tokens: AuthTokens): void => {
+  const accessTokenMaxAge = getTokenExpiration(config.jwt.expiresIn);
+  const refreshTokenMaxAge = getTokenExpiration(config.jwt.refreshExpiresIn);
+
+  res.cookie('accessToken', tokens.accessToken, getCookieOptions(accessTokenMaxAge));
+  res.cookie('refreshToken', tokens.refreshToken, getCookieOptions(refreshTokenMaxAge));
 };

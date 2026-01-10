@@ -1,130 +1,145 @@
-import { Request, Response } from 'express';
-import {
-  getCurrentWeather,
-  getWeatherByCoords,
-  getForecast,
-  getForecastByCoords,
-} from '../services/weatherService';
+import { Request, Response, NextFunction } from 'express';
+import { weatherService } from '../services';
+import { ApiResponse } from '../types/express.d';
+import { WeatherData, ForecastData } from '../types';
+import { ApiError } from '../middlewares';
 
-// Get current weather by city
-export const getWeather = async (req: Request, res: Response): Promise<void> => {
+/**
+ * Get current weather
+ * GET /api/weather
+ * Query params: city OR (lat, lon), units (optional)
+ */
+export const getCurrentWeather = async (
+  req: Request<
+    object,
+    ApiResponse<WeatherData>,
+    object,
+    { city?: string; lat?: string; lon?: string; units?: 'metric' | 'imperial' | 'standard' }
+  >,
+  res: Response<ApiResponse<WeatherData>>,
+  next: NextFunction
+): Promise<void> => {
   try {
-    const { city } = req.params;
+    const { city, lat, lon, units = 'metric' } = req.query;
 
-    if (!city) {
-      res.status(400).json({
-        success: false,
-        message: 'City name is required',
-      });
-      return;
+    let weatherData: WeatherData;
+
+    if (city) {
+      // Get weather by city name
+      weatherData = await weatherService.getCurrentWeatherByCity(city, units);
+    } else if (lat && lon) {
+      // Get weather by coordinates
+      const latitude = parseFloat(lat);
+      const longitude = parseFloat(lon);
+
+      if (isNaN(latitude) || isNaN(longitude)) {
+        throw new ApiError(400, 'Invalid coordinates provided');
+      }
+
+      weatherData = await weatherService.getCurrentWeatherByCoords(
+        latitude,
+        longitude,
+        units
+      );
+    } else {
+      throw new ApiError(
+        400,
+        'Please provide either a city name or coordinates (lat, lon)'
+      );
     }
-
-    const weather = await getCurrentWeather(city);
 
     res.status(200).json({
       success: true,
-      data: weather,
+      data: weatherData,
     });
-  } catch (error: any) {
-    res.status(error.message === 'City not found' ? 404 : 500).json({
-      success: false,
-      message: error.message,
-    });
+  } catch (error) {
+    next(error);
   }
 };
 
-// Get weather by coordinates
-export const getWeatherByLocation = async (
-  req: Request,
-  res: Response
+/**
+ * Get 5-day forecast
+ * GET /api/weather/forecast
+ * Query params: city OR (lat, lon), units (optional)
+ */
+export const getForecast = async (
+  req: Request<
+    object,
+    ApiResponse<ForecastData>,
+    object,
+    { city?: string; lat?: string; lon?: string; units?: 'metric' | 'imperial' | 'standard' }
+  >,
+  res: Response<ApiResponse<ForecastData>>,
+  next: NextFunction
 ): Promise<void> => {
   try {
-    const { lat, lon } = req.query;
+    const { city, lat, lon, units = 'metric' } = req.query;
 
-    if (!lat || !lon) {
-      res.status(400).json({
-        success: false,
-        message: 'Latitude and longitude are required',
-      });
-      return;
+    let forecastData: ForecastData;
+
+    if (city) {
+      // Get forecast by city name
+      forecastData = await weatherService.getForecastByCity(city, units);
+    } else if (lat && lon) {
+      // Get forecast by coordinates
+      const latitude = parseFloat(lat);
+      const longitude = parseFloat(lon);
+
+      if (isNaN(latitude) || isNaN(longitude)) {
+        throw new ApiError(400, 'Invalid coordinates provided');
+      }
+
+      forecastData = await weatherService.getForecastByCoords(
+        latitude,
+        longitude,
+        units
+      );
+    } else {
+      throw new ApiError(
+        400,
+        'Please provide either a city name or coordinates (lat, lon)'
+      );
     }
-
-    const weather = await getWeatherByCoords(
-      parseFloat(lat as string),
-      parseFloat(lon as string)
-    );
 
     res.status(200).json({
       success: true,
-      data: weather,
+      data: forecastData,
     });
-  } catch (error: any) {
-    res.status(error.message === 'Location not found' ? 404 : 500).json({
-      success: false,
-      message: error.message,
-    });
+  } catch (error) {
+    next(error);
   }
 };
 
-// Get forecast by city
-export const getCityForecast = async (
-  req: Request,
-  res: Response
+/**
+ * Search for cities (geocoding)
+ * GET /api/weather/search
+ * Query params: q (search query)
+ */
+export const searchCities = async (
+  req: Request<object, ApiResponse, object, { q?: string }>,
+  res: Response<ApiResponse>,
+  next: NextFunction
 ): Promise<void> => {
   try {
-    const { city } = req.params;
+    const { q } = req.query;
 
-    if (!city) {
-      res.status(400).json({
-        success: false,
-        message: 'City name is required',
-      });
-      return;
+    if (!q || q.length < 2) {
+      throw new ApiError(400, 'Search query must be at least 2 characters');
     }
 
-    const forecast = await getForecast(city);
+    const location = await weatherService.getCoordinates(q);
 
     res.status(200).json({
       success: true,
-      data: forecast,
+      data: {
+        name: location.name,
+        country: location.country,
+        state: location.state,
+        lat: location.lat,
+        lon: location.lon,
+      },
     });
-  } catch (error: any) {
-    res.status(error.message === 'City not found' ? 404 : 500).json({
-      success: false,
-      message: error.message,
-    });
-  }
-};
-
-// Get forecast by coordinates
-export const getLocationForecast = async (
-  req: Request,
-  res: Response
-): Promise<void> => {
-  try {
-    const { lat, lon } = req.query;
-
-    if (!lat || !lon) {
-      res.status(400).json({
-        success: false,
-        message: 'Latitude and longitude are required',
-      });
-      return;
-    }
-
-    const forecast = await getForecastByCoords(
-      parseFloat(lat as string),
-      parseFloat(lon as string)
-    );
-
-    res.status(200).json({
-      success: true,
-      data: forecast,
-    });
-  } catch (error: any) {
-    res.status(error.message === 'Location not found' ? 404 : 500).json({
-      success: false,
-      message: error.message,
-    });
+  } catch (error) {
+    next(error);
   }
 };

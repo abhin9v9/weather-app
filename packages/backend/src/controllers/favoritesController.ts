@@ -1,128 +1,130 @@
-import { Response } from 'express';
-import User from '../models/User';
-import { AuthRequest } from '../types';
+import { Request, Response, NextFunction } from 'express';
+import { favoritesService } from '../services';
+import { ApiResponse } from '../types/express.d';
+import { CreateFavoriteDTO, FavoriteResponse } from '../types';
 
-// Get user's favorite cities
+/**
+ * Get all favorites for current user
+ * GET /api/favorites
+ */
 export const getFavorites = async (
-  req: AuthRequest,
-  res: Response
+  req: Request,
+  res: Response<ApiResponse<FavoriteResponse[]>>,
+  next: NextFunction
 ): Promise<void> => {
   try {
-    const user = await User.findById(req.user?.id);
-
-    if (!user) {
-      res.status(404).json({
+    if (!req.user) {
+      res.status(401).json({
         success: false,
-        message: 'User not found',
+        message: 'Not authenticated',
       });
       return;
     }
+
+    const favorites = await favoritesService.getFavorites(req.user.id);
 
     res.status(200).json({
       success: true,
-      data: user.favorites,
+      data: favorites,
     });
   } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: 'Error fetching favorites',
-    });
+    next(error);
   }
 };
 
-// Add city to favorites
+/**
+ * Add a new favorite city
+ * POST /api/favorites
+ */
 export const addFavorite = async (
-  req: AuthRequest,
-  res: Response
+  req: Request<object, ApiResponse<FavoriteResponse>, CreateFavoriteDTO>,
+  res: Response<ApiResponse<FavoriteResponse>>,
+  next: NextFunction
 ): Promise<void> => {
   try {
-    const { city } = req.body;
-
-    if (!city) {
-      res.status(400).json({
+    if (!req.user) {
+      res.status(401).json({
         success: false,
-        message: 'City name is required',
+        message: 'Not authenticated',
       });
       return;
     }
 
-    const user = await User.findById(req.user?.id);
+    const favorite = await favoritesService.addFavorite(req.user.id, req.body);
 
-    if (!user) {
-      res.status(404).json({
-        success: false,
-        message: 'User not found',
-      });
-      return;
-    }
-
-    // Check if city already in favorites
-    if (user.favorites.includes(city)) {
-      res.status(400).json({
-        success: false,
-        message: 'City already in favorites',
-      });
-      return;
-    }
-
-    // Add city to favorites
-    user.favorites.push(city);
-    await user.save();
-
-    res.status(200).json({
+    res.status(201).json({
       success: true,
       message: 'City added to favorites',
-      data: user.favorites,
+      data: favorite,
     });
   } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: 'Error adding favorite',
-    });
+    next(error);
   }
 };
 
-// Remove city from favorites
+/**
+ * Remove a favorite by ID
+ * DELETE /api/favorites/:id
+ */
 export const removeFavorite = async (
-  req: AuthRequest,
-  res: Response
+  req: Request<{ id: string }>,
+  res: Response<ApiResponse>,
+  next: NextFunction
 ): Promise<void> => {
   try {
-    const { city } = req.params;
-
-    if (!city) {
-      res.status(400).json({
+    if (!req.user) {
+      res.status(401).json({
         success: false,
-        message: 'City name is required',
+        message: 'Not authenticated',
       });
       return;
     }
 
-    const user = await User.findById(req.user?.id);
-
-    if (!user) {
-      res.status(404).json({
-        success: false,
-        message: 'User not found',
-      });
-      return;
-    }
-
-    // Remove city from favorites
-    user.favorites = user.favorites.filter(
-      (fav) => fav.toLowerCase() !== city.toLowerCase()
-    );
-    await user.save();
+    await favoritesService.removeFavorite(req.user.id, req.params.id);
 
     res.status(200).json({
       success: true,
       message: 'City removed from favorites',
-      data: user.favorites,
     });
   } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: 'Error removing favorite',
+    next(error);
+  }
+};
+
+/**
+ * Check if a city is in favorites
+ * GET /api/favorites/check
+ */
+export const checkFavorite = async (
+  req: Request<object, ApiResponse<{ isFavorite: boolean }>, object, { city: string }>,
+  res: Response<ApiResponse<{ isFavorite: boolean }>>,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    if (!req.user) {
+      res.status(401).json({
+        success: false,
+        message: 'Not authenticated',
+      });
+      return;
+    }
+
+    const { city } = req.query;
+    if (!city) {
+      res.status(400).json({
+        success: false,
+        message: 'City name is required',
+      });
+      return;
+    }
+
+    const isFavorite = await favoritesService.isFavorite(req.user.id, city);
+
+    res.status(200).json({
+      success: true,
+      data: { isFavorite },
     });
+  } catch (error) {
+    next(error);
   }
 };

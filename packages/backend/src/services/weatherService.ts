@@ -1,182 +1,252 @@
-import axios from 'axios';
-import dotenv from 'dotenv';
-import { WeatherData, ForecastData, ForecastItem } from '../types';
+import axios, { AxiosError } from 'axios';
+import { config } from '../config';
+import {
+  WeatherData,
+  ForecastData,
+  ForecastItem,
+  OpenWeatherCurrentResponse,
+  OpenWeatherForecastResponse,
+  GeocodingResponse,
+} from '../types';
+import { ApiError } from '../middlewares';
 
-dotenv.config();
+const OPENWEATHER_BASE_URL = 'https://api.openweathermap.org';
 
-const API_KEY = process.env.OPENWEATHER_API_KEY;
-const BASE_URL = 'https://api.openweathermap.org/data/2.5';
+/**
+ * Weather Service
+ * Handles all interactions with OpenWeatherMap API
+ */
+class WeatherService {
+  private apiKey: string;
+  private baseUrl: string;
 
-// Get current weather by city name
-export const getCurrentWeather = async (city: string): Promise<WeatherData> => {
-  try {
-    const response = await axios.get(`${BASE_URL}/weather`, {
-      params: {
-        q: city,
-        appid: API_KEY,
-        units: 'metric',
-      },
-    });
+  constructor() {
+    this.apiKey = config.openWeather.apiKey;
+    this.baseUrl = OPENWEATHER_BASE_URL;
+  }
 
-    const data = response.data;
+  /**
+   * Get coordinates for a city name using geocoding API
+   */
+  async getCoordinates(city: string): Promise<GeocodingResponse> {
+    try {
+      const response = await axios.get<GeocodingResponse[]>(
+        `${this.baseUrl}/geo/1.0/direct`,
+        {
+          params: {
+            q: city,
+            limit: 1,
+            appid: this.apiKey,
+          },
+        }
+      );
 
+      if (!response.data || response.data.length === 0) {
+        throw new ApiError(404, `City "${city}" not found`);
+      }
+
+      return response.data[0];
+    } catch (error) {
+      this.handleApiError(error, 'Failed to get coordinates');
+      throw error;
+    }
+  }
+
+  /**
+   * Get current weather by city name
+   */
+  async getCurrentWeatherByCity(
+    city: string,
+    units: 'metric' | 'imperial' | 'standard' = 'metric'
+  ): Promise<WeatherData> {
+    try {
+      const response = await axios.get<OpenWeatherCurrentResponse>(
+        `${this.baseUrl}/data/2.5/weather`,
+        {
+          params: {
+            q: city,
+            units,
+            appid: this.apiKey,
+          },
+        }
+      );
+
+      return this.transformCurrentWeather(response.data);
+    } catch (error) {
+      this.handleApiError(error, 'Failed to get weather data');
+      throw error;
+    }
+  }
+
+  /**
+   * Get current weather by coordinates
+   */
+  async getCurrentWeatherByCoords(
+    lat: number,
+    lon: number,
+    units: 'metric' | 'imperial' | 'standard' = 'metric'
+  ): Promise<WeatherData> {
+    try {
+      const response = await axios.get<OpenWeatherCurrentResponse>(
+        `${this.baseUrl}/data/2.5/weather`,
+        {
+          params: {
+            lat,
+            lon,
+            units,
+            appid: this.apiKey,
+          },
+        }
+      );
+
+      return this.transformCurrentWeather(response.data);
+    } catch (error) {
+      this.handleApiError(error, 'Failed to get weather data');
+      throw error;
+    }
+  }
+
+  /**
+   * Get 5-day forecast by city name
+   */
+  async getForecastByCity(
+    city: string,
+    units: 'metric' | 'imperial' | 'standard' = 'metric'
+  ): Promise<ForecastData> {
+    try {
+      const response = await axios.get<OpenWeatherForecastResponse>(
+        `${this.baseUrl}/data/2.5/forecast`,
+        {
+          params: {
+            q: city,
+            units,
+            appid: this.apiKey,
+          },
+        }
+      );
+
+      return this.transformForecast(response.data);
+    } catch (error) {
+      this.handleApiError(error, 'Failed to get forecast data');
+      throw error;
+    }
+  }
+
+  /**
+   * Get 5-day forecast by coordinates
+   */
+  async getForecastByCoords(
+    lat: number,
+    lon: number,
+    units: 'metric' | 'imperial' | 'standard' = 'metric'
+  ): Promise<ForecastData> {
+    try {
+      const response = await axios.get<OpenWeatherForecastResponse>(
+        `${this.baseUrl}/data/2.5/forecast`,
+        {
+          params: {
+            lat,
+            lon,
+            units,
+            appid: this.apiKey,
+          },
+        }
+      );
+
+      return this.transformForecast(response.data);
+    } catch (error) {
+      this.handleApiError(error, 'Failed to get forecast data');
+      throw error;
+    }
+  }
+
+  /**
+   * Transform OpenWeatherMap current weather response to our format
+   */
+  private transformCurrentWeather(data: OpenWeatherCurrentResponse): WeatherData {
     return {
       city: data.name,
       country: data.sys.country,
-      temperature: data.main.temp,
-      feelsLike: data.main.feels_like,
+      temperature: Math.round(data.main.temp),
+      feelsLike: Math.round(data.main.feels_like),
+      tempMin: Math.round(data.main.temp_min),
+      tempMax: Math.round(data.main.temp_max),
       humidity: data.main.humidity,
       pressure: data.main.pressure,
       windSpeed: data.wind.speed,
-      windDirection: data.wind.deg || 0,
-      description: data.weather[0].description,
-      icon: data.weather[0].icon,
+      windDeg: data.wind.deg,
+      description: data.weather[0]?.description || '',
+      icon: data.weather[0]?.icon || '',
       visibility: data.visibility,
       clouds: data.clouds.all,
       sunrise: data.sys.sunrise,
       sunset: data.sys.sunset,
       timezone: data.timezone,
-      dt: data.dt,
-    };
-  } catch (error: any) {
-    if (error.response?.status === 404) {
-      throw new Error('City not found');
-    }
-    throw new Error('Failed to fetch weather data');
-  }
-};
-
-// Get current weather by coordinates
-export const getWeatherByCoords = async (
-  lat: number,
-  lon: number
-): Promise<WeatherData> => {
-  try {
-    const response = await axios.get(`${BASE_URL}/weather`, {
-      params: {
-        lat,
-        lon,
-        appid: API_KEY,
-        units: 'metric',
+      coordinates: {
+        lat: data.coord.lat,
+        lon: data.coord.lon,
       },
-    });
-
-    const data = response.data;
-
-    return {
-      city: data.name,
-      country: data.sys.country,
-      temperature: data.main.temp,
-      feelsLike: data.main.feels_like,
-      humidity: data.main.humidity,
-      pressure: data.main.pressure,
-      windSpeed: data.wind.speed,
-      windDirection: data.wind.deg || 0,
-      description: data.weather[0].description,
-      icon: data.weather[0].icon,
-      visibility: data.visibility,
-      clouds: data.clouds.all,
-      sunrise: data.sys.sunrise,
-      sunset: data.sys.sunset,
-      timezone: data.timezone,
-      dt: data.dt,
     };
-  } catch (error: any) {
-    if (error.response?.status === 404) {
-      throw new Error('Location not found');
-    }
-    throw new Error('Failed to fetch weather data');
   }
-};
 
-// Get 5-day forecast by city name
-export const getForecast = async (city: string): Promise<ForecastData> => {
-  try {
-    const response = await axios.get(`${BASE_URL}/forecast`, {
-      params: {
-        q: city,
-        appid: API_KEY,
-        units: 'metric',
-      },
-    });
-
-    const data = response.data;
-
-    const forecastList: ForecastItem[] = data.list.map((item: any) => ({
+  /**
+   * Transform OpenWeatherMap forecast response to our format
+   */
+  private transformForecast(data: OpenWeatherForecastResponse): ForecastData {
+    const list: ForecastItem[] = data.list.map((item) => ({
       dt: item.dt,
-      temperature: item.main.temp,
-      feelsLike: item.main.feels_like,
-      tempMin: item.main.temp_min,
-      tempMax: item.main.temp_max,
+      temperature: Math.round(item.main.temp),
+      feelsLike: Math.round(item.main.feels_like),
+      tempMin: Math.round(item.main.temp_min),
+      tempMax: Math.round(item.main.temp_max),
       humidity: item.main.humidity,
-      pressure: item.main.pressure,
+      description: item.weather[0]?.description || '',
+      icon: item.weather[0]?.icon || '',
       windSpeed: item.wind.speed,
-      windDirection: item.wind.deg || 0,
-      description: item.weather[0].description,
-      icon: item.weather[0].icon,
-      clouds: item.clouds.all,
-      pop: item.pop,
-      rain: item.rain?.['3h'],
-      snow: item.snow?.['3h'],
+      pop: Math.round(item.pop * 100),
     }));
 
     return {
       city: data.city.name,
       country: data.city.country,
-      list: forecastList,
+      list,
     };
-  } catch (error: any) {
-    if (error.response?.status === 404) {
-      throw new Error('City not found');
-    }
-    throw new Error('Failed to fetch forecast data');
   }
-};
 
-// Get forecast by coordinates
-export const getForecastByCoords = async (
-  lat: number,
-  lon: number
-): Promise<ForecastData> => {
-  try {
-    const response = await axios.get(`${BASE_URL}/forecast`, {
-      params: {
-        lat,
-        lon,
-        appid: API_KEY,
-        units: 'metric',
-      },
-    });
+  /**
+   * Handle API errors from OpenWeatherMap
+   */
+  private handleApiError(error: unknown, defaultMessage: string): never {
+    if (axios.isAxiosError(error)) {
+      const axiosError = error as AxiosError<{ message?: string; cod?: number }>;
+      const status = axiosError.response?.status;
+      const message = axiosError.response?.data?.message;
 
-    const data = response.data;
-
-    const forecastList: ForecastItem[] = data.list.map((item: any) => ({
-      dt: item.dt,
-      temperature: item.main.temp,
-      feelsLike: item.main.feels_like,
-      tempMin: item.main.temp_min,
-      tempMax: item.main.temp_max,
-      humidity: item.main.humidity,
-      pressure: item.main.pressure,
-      windSpeed: item.wind.speed,
-      windDirection: item.wind.deg || 0,
-      description: item.weather[0].description,
-      icon: item.weather[0].icon,
-      clouds: item.clouds.all,
-      pop: item.pop,
-      rain: item.rain?.['3h'],
-      snow: item.snow?.['3h'],
-    }));
-
-    return {
-      city: data.city.name,
-      country: data.city.country,
-      list: forecastList,
-    };
-  } catch (error: any) {
-    if (error.response?.status === 404) {
-      throw new Error('Location not found');
+      switch (status) {
+        case 401:
+          throw new ApiError(500, 'Weather API authentication failed');
+        case 404:
+          throw new ApiError(404, message || 'City not found');
+        case 429:
+          throw new ApiError(
+            503,
+            'Weather API rate limit exceeded. Please try again later.'
+          );
+        default:
+          throw new ApiError(
+            status || 500,
+            message || defaultMessage
+          );
+      }
     }
-    throw new Error('Failed to fetch forecast data');
+
+    if (error instanceof ApiError) {
+      throw error;
+    }
+
+    throw new ApiError(500, defaultMessage);
   }
-};
+}
+
+// Export singleton instance
+export const weatherService = new WeatherService();
