@@ -92,14 +92,12 @@ favoriteSchema.statics.findByUser = function (
 };
 
 // Pre-save middleware to normalize city and country
-favoriteSchema.pre('save', function (next) {
+favoriteSchema.pre('save', function () {
   // Capitalize first letter of each word in city name
   this.city = this.city
     .split(' ')
     .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
     .join(' ');
-
-  next();
 });
 
 export const Favorite = mongoose.model<IFavoriteDocument, IFavoriteModel>(

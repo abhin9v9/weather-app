@@ -77,20 +77,15 @@ const userSchema = new Schema<IUserDocument, IUserModel>(
 userSchema.index({ email: 1 });
 
 // Pre-save middleware to hash password
-userSchema.pre('save', async function (next) {
+userSchema.pre('save', async function () {
   // Only hash the password if it has been modified (or is new)
   if (!this.isModified('password')) {
-    return next();
+    return;
   }
 
-  try {
-    // Generate salt and hash password
-    const salt = await bcrypt.genSalt(12);
-    this.password = await bcrypt.hash(this.password, salt);
-    next();
-  } catch (error) {
-    next(error as Error);
-  }
+  // Generate salt and hash password
+  const salt = await bcrypt.genSalt(12);
+  this.password = await bcrypt.hash(this.password, salt);
 });
 
 // Instance method to compare passwords

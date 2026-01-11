@@ -1,0 +1,26 @@
+services:
+  - type: web
+    name: weather-dashboard-api
+    env: node
+    region: oregon
+    plan: free
+    buildCommand: cd packages/backend && npm install && npm run build
+    startCommand: cd packages/backend && npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 3000
+      - key: MONGODB_URI
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true
+      - key: JWT_REFRESH_SECRET
+        generateValue: true
+      - key: OPENWEATHERMAP_API_KEY
+        sync: false
+      - key: FRONTEND_URL
+        sync: false
+      - key: CORS_ORIGIN
+        sync: false
