@@ -1,6 +1,7 @@
 import { createSlice, PayloadAction } from '@reduxjs/toolkit';
 import type { User, AuthState } from '../../types';
 import { authApi } from '../../api';
+import { clearTokens } from '../../api/baseQuery';
 
 const initialState: AuthState = {
   user: null,
@@ -28,6 +29,7 @@ const authSlice = createSlice({
       state.user = null;
       state.isAuthenticated = false;
       state.error = null;
+      clearTokens();
     },
   },
   extraReducers: (builder) => {

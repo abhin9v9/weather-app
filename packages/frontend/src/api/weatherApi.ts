@@ -1,14 +1,10 @@
-import { createApi, fetchBaseQuery } from '@reduxjs/toolkit/query/react';
+import { createApi } from '@reduxjs/toolkit/query/react';
 import type { ApiResponse, WeatherData, ForecastData } from '../types';
-
-const API_URL = import.meta.env.VITE_API_URL || '/api';
+import baseQueryWithReauth from './baseQuery';
 
 export const weatherApi = createApi({
   reducerPath: 'weatherApi',
-  baseQuery: fetchBaseQuery({
-    baseUrl: API_URL,
-    credentials: 'include',
-  }),
+  baseQuery: baseQueryWithReauth,
   tagTypes: ['Weather', 'Forecast'],
   endpoints: (builder) => ({
     // Get current weather by city

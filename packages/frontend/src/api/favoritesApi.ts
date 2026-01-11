@@ -1,14 +1,10 @@
-import { createApi, fetchBaseQuery } from '@reduxjs/toolkit/query/react';
+import { createApi } from '@reduxjs/toolkit/query/react';
 import type { ApiResponse, Favorite, AddFavoriteData } from '../types';
-
-const API_URL = import.meta.env.VITE_API_URL || '/api';
+import baseQueryWithReauth from './baseQuery';
 
 export const favoritesApi = createApi({
   reducerPath: 'favoritesApi',
-  baseQuery: fetchBaseQuery({
-    baseUrl: API_URL,
-    credentials: 'include',
-  }),
+  baseQuery: baseQueryWithReauth,
   tagTypes: ['Favorites'],
   endpoints: (builder) => ({
     // Get all favorites

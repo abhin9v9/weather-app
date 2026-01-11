@@ -20,20 +20,21 @@ const getCookieOptions = (maxAge: number) => ({
  * POST /api/auth/register
  */
 export const register = async (
-  req: Request<object, ApiResponse<{ user: UserResponse }>, CreateUserDTO>,
-  res: Response<ApiResponse<{ user: UserResponse }>>,
+  req: Request<object, ApiResponse<{ user: UserResponse; accessToken: string; refreshToken: string }>, CreateUserDTO>,
+  res: Response<ApiResponse<{ user: UserResponse; accessToken: string; refreshToken: string }>>,
   next: NextFunction
 ): Promise<void> => {
   try {
     const { user, tokens } = await authService.register(req.body);
 
-    // Set cookies
+    // Set cookies (fallback for same-origin)
     setAuthCookies(res, tokens);
 
+    // Also return tokens in body for cross-origin (localStorage approach)
     res.status(201).json({
       success: true,
       message: 'Registration successful',
-      data: { user },
+      data: { user, accessToken: tokens.accessToken, refreshToken: tokens.refreshToken },
     });
   } catch (error) {
     next(error);
@@ -45,20 +46,21 @@ export const register = async (
  * POST /api/auth/login
  */
 export const login = async (
-  req: Request<object, ApiResponse<{ user: UserResponse }>, LoginDTO>,
-  res: Response<ApiResponse<{ user: UserResponse }>>,
+  req: Request<object, ApiResponse<{ user: UserResponse; accessToken: string; refreshToken: string }>, LoginDTO>,
+  res: Response<ApiResponse<{ user: UserResponse; accessToken: string; refreshToken: string }>>,
   next: NextFunction
 ): Promise<void> => {
   try {
     const { user, tokens } = await authService.login(req.body);
 
-    // Set cookies
+    // Set cookies (fallback for same-origin)
     setAuthCookies(res, tokens);
 
+    // Also return tokens in body for cross-origin (localStorage approach)
     res.status(200).json({
       success: true,
       message: 'Login successful',
-      data: { user },
+      data: { user, accessToken: tokens.accessToken, refreshToken: tokens.refreshToken },
     });
   } catch (error) {
     next(error);
@@ -108,12 +110,14 @@ export const refreshToken = async (
 
     const tokens = await authService.refreshToken(refreshTokenValue);
 
-    // Set new cookies
+    // Set new cookies (fallback for same-origin)
     setAuthCookies(res, tokens);
 
+    // Also return tokens in body for cross-origin
     res.status(200).json({
       success: true,
       message: 'Token refreshed successfully',
+      data: { accessToken: tokens.accessToken, refreshToken: tokens.refreshToken },
     });
   } catch (error) {
     // Clear invalid cookies

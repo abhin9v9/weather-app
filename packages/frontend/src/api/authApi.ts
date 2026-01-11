@@ -1,4 +1,4 @@
-import { createApi, fetchBaseQuery } from '@reduxjs/toolkit/query/react';
+import { createApi } from '@reduxjs/toolkit/query/react';
 import type {
   ApiResponse,
   User,
@@ -6,34 +6,56 @@ import type {
   RegisterData,
   UserPreferences,
 } from '../types';
+import baseQueryWithReauth, { setTokens, clearTokens } from './baseQuery';
 
-const API_URL = import.meta.env.VITE_API_URL || '/api';
+interface AuthResponse {
+  user: User;
+  accessToken: string;
+  refreshToken: string;
+}
 
 export const authApi = createApi({
   reducerPath: 'authApi',
-  baseQuery: fetchBaseQuery({
-    baseUrl: API_URL,
-    credentials: 'include', // Important for cookies
-  }),
+  baseQuery: baseQueryWithReauth,
   tagTypes: ['User'],
   endpoints: (builder) => ({
     // Register new user
-    register: builder.mutation<ApiResponse<{ user: User }>, RegisterData>({
+    register: builder.mutation<ApiResponse<AuthResponse>, RegisterData>({
       query: (credentials) => ({
         url: '/auth/register',
         method: 'POST',
         body: credentials,
       }),
+      async onQueryStarted(_, { queryFulfilled }) {
+        try {
+          const { data } = await queryFulfilled;
+          if (data.success && data.data) {
+            setTokens(data.data.accessToken, data.data.refreshToken);
+          }
+        } catch {
+          // Handle error silently
+        }
+      },
       invalidatesTags: ['User'],
     }),
 
     // Login user
-    login: builder.mutation<ApiResponse<{ user: User }>, LoginCredentials>({
+    login: builder.mutation<ApiResponse<AuthResponse>, LoginCredentials>({
       query: (credentials) => ({
         url: '/auth/login',
         method: 'POST',
         body: credentials,
       }),
+      async onQueryStarted(_, { queryFulfilled }) {
+        try {
+          const { data } = await queryFulfilled;
+          if (data.success && data.data) {
+            setTokens(data.data.accessToken, data.data.refreshToken);
+          }
+        } catch {
+          // Handle error silently
+        }
+      },
       invalidatesTags: ['User'],
     }),
 
@@ -43,6 +65,13 @@ export const authApi = createApi({
         url: '/auth/logout',
         method: 'POST',
       }),
+      async onQueryStarted(_, { queryFulfilled }) {
+        try {
+          await queryFulfilled;
+        } finally {
+          clearTokens();
+        }
+      },
       invalidatesTags: ['User'],
     }),
 
@@ -53,11 +82,21 @@ export const authApi = createApi({
     }),
 
     // Refresh token
-    refreshToken: builder.mutation<ApiResponse, void>({
+    refreshToken: builder.mutation<ApiResponse<{ accessToken: string; refreshToken: string }>, void>({
       query: () => ({
         url: '/auth/refresh',
         method: 'POST',
       }),
+      async onQueryStarted(_, { queryFulfilled }) {
+        try {
+          const { data } = await queryFulfilled;
+          if (data.success && data.data) {
+            setTokens(data.data.accessToken, data.data.refreshToken);
+          }
+        } catch {
+          clearTokens();
+        }
+      },
     }),
 
     // Update preferences
