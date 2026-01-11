@@ -6,10 +6,11 @@ import { CreateUserDTO, LoginDTO, UserResponse, AuthTokens } from '../types';
 import { getTokenExpiration } from '../utils';
 
 // Cookie options for tokens
+// For cross-origin (Vercel frontend -> Render backend), we need sameSite: 'none' and secure: true
 const getCookieOptions = (maxAge: number) => ({
   httpOnly: true,
   secure: config.nodeEnv === 'production',
-  sameSite: config.nodeEnv === 'production' ? ('strict' as const) : ('lax' as const),
+  sameSite: config.nodeEnv === 'production' ? ('none' as const) : ('lax' as const),
   maxAge,
   path: '/',
 });

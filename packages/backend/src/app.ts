@@ -13,6 +13,11 @@ import { errorHandler, notFound, apiLimiter } from './middlewares';
 const createApp = (): Application => {
   const app = express();
 
+  // Trust proxy for production (Render, Heroku, etc.)
+  if (config.nodeEnv === 'production') {
+    app.set('trust proxy', 1);
+  }
+
   // Security middleware
   app.use(helmet());
 
