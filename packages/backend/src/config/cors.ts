@@ -20,6 +20,12 @@ if (process.env.CORS_ORIGIN) {
   allowedOrigins.push(...origins);
 }
 
+// Patterns for dynamic origins (Vercel preview deployments)
+const allowedPatterns: RegExp[] = [
+  /^https:\/\/weather-app-frontend.*\.vercel\.app$/,
+  /^https:\/\/.*-abhinavs-projects.*\.vercel\.app$/,
+];
+
 console.log('Allowed CORS origins:', allowedOrigins);
 
 const corsOptions: CorsOptions = {
@@ -32,12 +38,20 @@ const corsOptions: CorsOptions = {
     // Remove trailing slash from incoming origin for comparison
     const normalizedOrigin = origin.replace(/\/$/, '');
 
+    // Check exact matches
     if (allowedOrigins.includes(normalizedOrigin) || config.nodeEnv === 'development') {
-      callback(null, true);
-    } else {
-      console.log(`CORS blocked origin: ${origin}`);
-      callback(new Error('Not allowed by CORS'));
+      return callback(null, true);
     }
+
+    // Check pattern matches (for Vercel preview URLs)
+    for (const pattern of allowedPatterns) {
+      if (pattern.test(normalizedOrigin)) {
+        return callback(null, true);
+      }
+    }
+
+    console.log(`CORS blocked origin: ${origin}`);
+    callback(new Error('Not allowed by CORS'));
   },
   credentials: true, // Allow cookies to be sent
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
